@@ -1,0 +1,19 @@
+# Python (Backend)
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Node (Frontend)
+node_modules/
+dist/
+build/
+.DS_Store
+
+# Logs
+*.log
+
+# IDE settings (VS Code, JetBrains)
+.vscode/
+.idea/
