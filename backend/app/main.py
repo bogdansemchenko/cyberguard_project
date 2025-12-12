@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import io
+
 from . import models, database
 from .services.analysis import AnalysisEngine
 from .services.prevention import PreventionSystem
@@ -177,3 +180,74 @@ def update_protection(config: dict, db: Session = Depends(get_db)):
     settings.config = config
     db.commit()
     return {"status": "saved"}
+
+
+@app.post("/api/incidents/create")
+def create_manual_incident(db: Session = Depends(get_db)):
+    """Создает тестовый инцидент вручную по кнопке"""
+    # Генерируем случайный код и тип для имитации ввода данных
+    new_code = f"MANUAL-{random.randint(1000, 9999)}"
+
+    inc = models.Incident(
+        code=new_code,
+        type="Подозрительная активность",
+        severity="High",
+        status="Active",
+        description="Ручная регистрация подозрительной активности оператором.",
+        responsible="Иван Иванов",
+        source="Внутренняя сеть"
+    )
+    db.add(inc)
+    db.commit()
+    return {"status": "created", "incident": new_code}
+
+
+@app.post("/api/scan/start")
+def start_scan(db: Session = Depends(get_db)):
+    # Имитация бурной деятельности: находим "скрытую" угрозу
+    time.sleep(2)
+    new_threat = models.Threat(
+        type="Spyware",
+        source_ip=f"10.0.0.{random.randint(50, 99)}",
+        severity="Medium",
+        location_x=random.randint(20, 80), location_y=random.randint(20, 80),
+        is_active=True
+    )
+    db.add(new_threat)
+    db.commit()
+    return {"status": "scan_complete", "found": 1}
+
+
+
+@app.get("/api/threats")
+def get_threats(
+        type: str = Query(None),
+        severity: str = Query(None),
+        db: Session = Depends(get_db)
+):
+    query = db.query(models.Threat)
+    # Если фильтры выбраны - применяем их
+    if type and type != "Все типы":
+        query = query.filter(models.Threat.type == type)
+    if severity and severity != "Все уровни":
+        query = query.filter(models.Threat.severity == severity)
+
+    return query.order_by(models.Threat.detected_at.desc()).all()
+
+
+@app.post("/api/notifications/send")
+def send_notification(email: str = "staff@company.com", message: str = "Alert"):
+    # Здесь была бы интеграция с SMTP
+    print(f"EMAIL SENT TO {email}: {message}")
+    return {"status": "sent"}
+
+
+
+
+@app.get("/api/reports/{id}/export")
+def export_report(id: int, format: str):
+    # Генерация фейкового файла
+    file_content = f"Report ID {id}\nFormat: {format}\nStatus: Secure".encode()
+    return StreamingResponse(io.BytesIO(file_content), media_type="text/plain", headers={
+        "Content-Disposition": f"attachment; filename=report_{id}.{format.lower()}"
+    })

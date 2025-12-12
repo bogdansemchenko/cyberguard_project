@@ -1,37 +1,61 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Activity, AlertTriangle, BarChart2 } from 'lucide-react';
+import { Activity, AlertTriangle, BarChart2, Shield, Play, Ban } from 'lucide-react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+const API_URL = "http://localhost:8000/api";
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [scanning, setScanning] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/dashboard`);
+      setData(res.data);
+    } catch (e) {
+      console.error("Ошибка загрузки дашборда:", e);
+    }
+  };
 
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await axios.get('http://localhost:3000/api/dashboard');
-        setData(res.data);
-      } catch (e) {
-        console.error("Ошибка загрузки дашборда:", e);
-      }
-    };
-    fetch();
-    const interval = setInterval(fetch, 3000);
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  // --- ЛОГИКА КНОПКИ СКАНИРОВАНИЯ ---
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+        await axios.post(`${API_URL}/scan/start`);
+        alert("Сканирование завершено. Данные обновлены.");
+        fetchData(); // Обновляем цифры сразу
+    } catch (e) {
+        alert("Ошибка при запуске сканирования");
+    } finally {
+        setScanning(false);
+    }
+  };
+
+  const handleBlockAll = async () => {
+      if(window.confirm("Вы уверены? Это заблокирует все активные угрозы.")) {
+          await axios.post(`${API_URL}/threats/block_all`);
+          fetchData();
+      }
+  };
+
   if (!data) return <div className="text-center mt-20 text-gray-400">Загрузка системы CyberGuard...</div>;
 
-  // Безопасное получение данных (защита от ошибок)
   const stats = data.stats || { threat_level: 0, network_health: 100 };
-  const activeThreats = data.active_threats ?? 0; // Используем правильный ключ из API
-  const incidentsList = data.incidents || [];     // Используем правильный ключ из API
+  const activeThreats = data.active_threats ?? 0;
+  const incidentsList = data.incidents || [];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        {/* Карточка: Текущий статус сети */}
+        {/* Карточка: Текущий статус */}
         <div className="bg-[#1e293b] p-6 rounded-xl border border-gray-700 shadow-lg">
           <div className="flex justify-between items-start mb-4">
             <h3 className="text-blue-400 font-semibold">Текущий статус сети</h3>
@@ -59,18 +83,27 @@ export default function Dashboard() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 rounded transition">Запустить проверку</button>
-            <button className="bg-red-600/20 hover:bg-red-600 text-red-200 hover:text-white border border-red-600 text-xs py-2 rounded transition">Блокировать угрозы</button>
+            {/* ЖИВАЯ КНОПКА СКАНИРОВАНИЯ */}
+            <button
+                onClick={handleScan}
+                disabled={scanning}
+                className={`bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 rounded transition flex justify-center items-center gap-2 ${scanning ? 'opacity-50' : ''}`}
+            >
+                <Play size={12} /> {scanning ? "Сканирование..." : "Запустить проверку"}
+            </button>
+
+            <button onClick={handleBlockAll} className="bg-red-600/20 hover:bg-red-600 text-red-200 hover:text-white border border-red-600 text-xs py-2 rounded transition flex justify-center items-center gap-2">
+                <Shield size={12}/> Блокировать угрозы
+            </button>
           </div>
         </div>
 
-        {/* Карточка: Последние инциденты */}
+        {/* Карточка: Инциденты */}
         <div className="bg-[#1e293b] p-6 rounded-xl border border-gray-700 shadow-lg col-span-2 flex flex-col">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-blue-400 font-semibold flex items-center gap-2">
                     <AlertTriangle size={18} /> Последние инциденты
                 </h3>
-                <span className="text-xs bg-red-500/10 text-red-400 px-2 py-1 rounded border border-red-500/20">Требуют внимания</span>
             </div>
             <div className="flex-1 overflow-auto">
                 <table className="w-full text-left text-sm text-gray-300">
@@ -82,12 +115,11 @@ export default function Dashboard() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
-                        {incidentsList.length > 0 ? incidentsList.map(inc => (
+                        {incidentsList.map(inc => (
                             <tr key={inc.id} className="hover:bg-gray-700/30">
                                 <td className="px-4 py-3 font-mono text-blue-400">{inc.code}</td>
                                 <td className="px-4 py-3">
                                     <div className="font-medium text-white">{inc.type}</div>
-                                    <div className="text-xs text-gray-500 truncate w-48">{inc.description}</div>
                                 </td>
                                 <td className="px-4 py-3">
                                     <span className={`px-2 py-1 rounded text-xs ${inc.severity === 'Critical' ? 'bg-red-900 text-red-200' : 'bg-yellow-900 text-yellow-200'}`}>
@@ -95,44 +127,11 @@ export default function Dashboard() {
                                     </span>
                                 </td>
                             </tr>
-                        )) : (
-                          <tr><td colSpan="3" className="p-4 text-center text-gray-500">Нет активных инцидентов</td></tr>
-                        )}
+                        ))}
                     </tbody>
                 </table>
             </div>
         </div>
-
-        {/* График активности */}
-        <div className="bg-[#1e293b] p-6 rounded-xl border border-gray-700 shadow-lg col-span-3">
-            <div className="flex justify-between mb-4">
-                <h3 className="text-blue-400 font-semibold">Активность сети за 24ч</h3>
-                <BarChart2 className="text-gray-500" />
-            </div>
-            <div className="h-48 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={[
-                        {time: '00:00', val: 20}, {time: '04:00', val: 45}, {time: '08:00', val: 30},
-                        {time: '12:00', val: 80}, {time: '16:00', val: 65}, {time: '20:00', val: 50}, {time: '24:00', val: 90}
-                    ]}>
-                        <defs>
-                            <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <XAxis dataKey="time" stroke="#4b5563" tick={{fontSize: 12}} />
-                        <Tooltip contentStyle={{backgroundColor: '#1f2937', borderColor: '#374151'}} />
-                        <Area type="monotone" dataKey="val" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorVal)" />
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
-            <div className="mt-4 text-xs text-gray-400 flex gap-6">
-                <p><strong>Пик активности:</strong> 14:30 - 15:45 (Подозрительные соединения)</p>
-                <p><strong>Источник атак:</strong> 18 различных IP-адресов</p>
-            </div>
-        </div>
-
       </div>
     </div>
   );
